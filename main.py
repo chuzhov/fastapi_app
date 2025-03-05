@@ -1,11 +1,26 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from app import models, schemas
+from app.database import SessionLocal, engine
+from app.security import get_password_hash
 import uvicorn
 
 from datetime import datetime
 
+# Create database tables
+models.Base.metadata.create_all(bind=engine)
+
 app = FastAPI()
+
+# Dependency to get database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # CORS
 app.add_middleware(
