@@ -15,5 +15,10 @@ class User(UserBase):
     created_at: datetime
     updated_at: Optional[datetime]
 
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    username: str
+
     class Config:
         from_attributes = True
