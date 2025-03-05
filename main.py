@@ -67,7 +67,7 @@ def health_check():
     )
 
 
-@app.post("/users/", response_model=schemas.User)
+@app.post("/users/", response_model=schemas.UserResponse, status_code=201)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     # Check if user with this email exists
     db_user = db.query(models.User) \
