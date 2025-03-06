@@ -1,11 +1,12 @@
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import SessionLocal, engine
 from app.security import get_password_hash
+from app.logger import logger
 import uvicorn
 
 from datetime import datetime
@@ -31,6 +32,20 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = datetime.now()
+    response = await call_next(request)
+    end_time = datetime.now()
+    execution_time = (end_time - start_time).total_seconds()
+    
+    logger.info(
+        f"Method: {request.method} Path: {request.url.path} "
+        f"Status: {response.status_code} "
+        f"Duration: {execution_time:.3f}s"
+    )
+    return response
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -59,6 +74,7 @@ def read_root():
 @app.get("/health")
 def health_check():
     return JSONResponse(
+        logger.info("Health check passed"),
         status_code=200,
         content={
             "status": "healthy",
@@ -74,6 +90,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
                 .filter(models.User.email == user.email) \
                 .first()
     if db_user:
+        logger.warning(f"Attempted to create user with existing email: {user.email}")
         raise HTTPException(status_code=400, detail="Email already registered")
     
     # Check if username is taken
@@ -81,6 +98,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
                 .filter(models.User.username == user.username) \
                 .first()
     if db_user:
+        logger.warning(f"Attempted to create user with existing username: {user.username}")
         raise HTTPException(status_code=400, detail="Username already taken")
     
     # Create new user
@@ -93,9 +111,11 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    logger.info(f"User created: {db_user.email}")
     return db_user
 
 
 
 if __name__ == "__main__":
+    logger.info("Starting FastAPI application")
     uvicorn.run(app, host="localhost", port=3000)
