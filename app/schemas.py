@@ -15,10 +15,16 @@ class User(UserBase):
     created_at: datetime
     updated_at: Optional[datetime]
 
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    username: str
-
     class Config:
         from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: str | None = None
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
