@@ -1,11 +1,12 @@
 
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import SessionLocal, engine
-from app.security import get_password_hash
+from app.security import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.logger import logger
 import uvicorn
 
@@ -41,8 +42,8 @@ async def log_requests(request: Request, call_next):
     execution_time = (end_time - start_time).total_seconds()
     
     logger.info(
-        f"Method: {request.method} Path: {request.url.path} "
-        f"Status: {response.status_code} "
+        f" {request.method} {request.url.path} "
+        f" {response.status_code} "
         f"Duration: {execution_time:.3f}s"
     )
     return response
@@ -83,7 +84,7 @@ def health_check():
     )
 
 
-@app.post("/users/", response_model=schemas.UserResponse, status_code=201)
+@app.post("/users/", response_model=schemas.User, status_code=201)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     # Check if user with this email exists
     db_user = db.query(models.User) \
@@ -113,6 +114,39 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     logger.info(f"User created: {db_user.email}")
     return db_user
+
+
+@app.post("/login", response_model=schemas.Token)
+async def login(login_data: schemas.UserLogin, db: Session = Depends(get_db)):
+    # Find user by email
+    user = db.query(models.User) \
+             .filter(models.User.email == login_data.email) \
+             .first()
+    if not user:
+        logger.warning(f"Login attempt with non-existent email: {login_data.email}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify password
+    if not verify_password(login_data.password, user.hashed_password):
+        logger.warning(f"Failed login attempt for user: {user.email}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Generate access token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    
+    logger.info(f"Successful login for user: {user.email}")
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 
